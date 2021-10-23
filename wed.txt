@@ -1,0 +1,255 @@
+Spring Parameters
+Wind = 1.8m/s
+Noble = 700 ci/s
+Iodine = 1.5 ci/s
+Particulates = .5 ci/s
+Release H = 0
+Mixing = 800
+Holdup = 5 hours
+Exposure = 2 hours
+
+RASCAL Parameters
+Wind = 1.78816m/s
+Noble = 200 ci/s
+Iodine = 10 ci/s
+Particulates = 1 ci/s
+Release H = 1
+Mixing = 800
+Holdup = .5 hours
+Exposure = 3 hours
+
+
+
+
+
+######################################################################
+# Radioactive Plume Equations ver. 1                                 #
+# By Mitch Gatewood                                                  #                           
+# input variables needed                                             #
+# wind_speed, class (stability), h_release (release height)          #
+# h_lid (mixing lid), exposure (exposure time), holdup (holdup time) #
+######################################################################
+import numpy as np
+from mpl_toolkits import mplot3d
+import matplotlib.pyplot as plt
+#x = np.logspace(-1, 2)
+y = np.arange(-40000, 40000, 1)
+#x=[.4, .8, 1.61, 2.41, 3.22, 48.3, 6.44, 8.05, 11.3, 16.1, 32.2, 40.2]
+x = np.arange(1 , 51, 1)
+Xval, Yval = np.meshgrid(x, y)
+
+# SIGMA_Y_COEF are the coefficients for the sigma y stablilty classes
+SIGMA_Y_COEF = np.array([[207.473, .863316],
+    [153.669, .881424],
+    [102.77, .8974],
+    [67.2088, .902809],
+    [49.6322, .902878],
+    [33.5143, .900409]])
+# SIGMA_Z_COEF are the coefficients for the sigma Z stablilty classes
+SIGMA_Z_COEF = np.array([[.225596, 2.00772, 6.04005],
+    [.0114002, 1.05809, 4.69916],
+    [-.00192604, .916609, 4.11859],
+    [-.033014, .736399, 3.4168],
+    [-.0451795, .680552, 3.05807],
+    [-.0524468, .654884, 2.61665]])
+
+
+#########################################################
+# sigma_y function is used to calculate the sigma y fit #
+# x = location in x direction                           #
+# class = stability class                               #
+#########################################################
+def sigma_y_func(stb_class, x):
+    if stb_class != 6:
+        sigma_y = SIGMA_Y_COEF[stb_class, 0] * x ** (SIGMA_Y_COEF[stb_class, 1])
+    else:
+        sigma_y=2/3 * (SIGMA_Y_COEF[5, 0] * x ** (SIGMA_Y_COEF[5, 1]))
+    return sigma_y
+
+#########################################################
+# sigma_z function is used to calculate the sigma z fit #
+# x = location in x direction                           #
+# class = stability class                               #
+#########################################################
+def sigma_z_func(stb_class, x):
+    if stb_class !=6:
+        sigma_z = np.exp(SIGMA_Z_COEF[stb_class, 0]*(np.log(x))**2+SIGMA_Z_COEF[stb_class, 1]*np.log(x)+SIGMA_Z_COEF[stb_class, 2])
+    else:
+        sigma_z = 2 / 3 * (np.exp(SIGMA_Z_COEF[5, 0]*(np.log(x))**2+SIGMA_Z_COEF[5, 1]*np.log(x)+SIGMA_Z_COEF[5, 2]))
+    return sigma_z
+
+########################################################
+# Iodines fit function                                 #
+# these fit equations were created using MATLAB cftool #
+# holdup = holdup time                                 #
+# exposure = exposure time                             #
+# iodine_rate = Iodines release rate                   #
+# tedi= TED dose                                       #
+# adult = adult dose                                   #
+# child = child dose                                   #
+########################################################
+
+def iodines_func(holdup, exposure, iodine_rate, wind_speed):
+    tedi = (-7036 * np.exp(-.4306 * holdup) + (-3.426e4) * np.exp(-.009497 * holdup) + 5.838e4 * np.exp(3.875e-4 * holdup)) * iodine_rate * (100 ** 3) * exposure / 1e6 / wind_speed;
+    adult = (1.133e6 * np.exp((3.455e-4) * holdup) - (1.504e5) * np.exp(-.2328 * holdup) - 6.953e5 * np.exp(-.008704 * holdup)) * iodine_rate * (100 ** 3) * exposure / 1e6 / wind_speed;
+    child = (2.047e6 * np.exp(4.467e-4 * holdup)-2.576e5 * np.exp(-.4386 * holdup) - 1.191e6 * np.exp(-.01076 * holdup)) * iodine_rate * (100 ** 3) * exposure / 1e6 / wind_speed;
+    return tedi, adult, child
+
+########################################################
+# Nobles fit function                                  #
+# these fit equations were created using MATLAB cftool #
+# noble_rate = Noble release rate                      #
+# holdup = holdup time                                 #
+# exposure = exposure time                             #
+# tedn= TED dose                                       #
+########################################################
+
+def nobles(holdup, exposure, noble_rate, wind_speed):
+    if holdup == 0:
+        l_holdup = 0
+    else:
+        l_holdup = np.log(holdup)
+
+    if exposure == 0:
+        l_exposure = 0
+    else:
+        l_exposure = np.log(exposure)
+    
+    # coefficients
+    p00 = 287.1
+    p10 = -39.3 
+    p01 = -73.16 
+    p20 = -10.36
+    p11 = 22.67  
+    p02 = -17.52  
+    p30 = -0.5556  
+    p21 = 4.307
+    p12 = -4.229  
+    p03 = 6.866
+    p31 = 0.0811  
+    p22 = -0.4185  
+    p13 = 0.2565
+    p04 = -0.5276  
+    
+    tedn = (p00 + p10 * l_exposure+p01 * l_holdup + p20 * l_exposure ** 2 + p11 * l_exposure * l_holdup + p02 * l_holdup ** 2 \
+    + p30 * l_exposure ** 3 + p21 * l_exposure ** 2 * l_holdup + p12 * l_exposure * l_holdup ** 2 + p03 * l_holdup ** 3 + p31 * l_exposure ** 3 * l_holdup \
+    + p22 * l_exposure ** 2 * l_holdup ** 2 + p13 * l_exposure * l_holdup ** 3 + p04 * l_holdup ** 4) * noble_rate * (100 ** 3) * exposure / 1e6 / wind_speed
+    return tedn
+
+########################################################
+# Cesiums function                                     #
+# exposure = exposure time                             #
+# partic_rate = Cesiums release rate                   #
+# tedp= TED dose                                       #
+########################################################
+
+def particulates(partic_rate, exposure, wind_speed):
+    tedp = 4.3e4 * partic_rate * (100 ** 3) * exposure / 1e6 / wind_speed;
+    return tedp
+
+#######################
+# Main Body of Script #
+#######################
+#stb_class selects which stability class to plot, A-F are 1-5 respectively
+stb_class = 3
+h_release = 10
+h_lid = 800
+holdup = 0.5
+exposure = 3
+iodine_rate = 10
+noble_rate = 200
+partic_rate = 1
+wind_speed = 1.788
+disp_y = np.zeros(len(x))
+disp_z = np.zeros(len(x))
+Xbase_1 = np.zeros(len(x))
+Xbase_2 = np.zeros(len(x))
+Xbase = np.zeros(len(x))
+s = (len(y), len(x))
+Y = np.zeros(s)
+X = np.zeros(s)
+for i in range(len(x)):
+    disp_y[i] = sigma_y_func(stb_class, x[i])  # calculated y dispersion parameter.
+    disp_z[i] = sigma_z_func(stb_class, x[i])  # calculated z dispersion parameter
+
+    # The base equations are needed to see which final plume equation we
+    # are going to use
+    Xbase_1[i] = 1/(np.pi*disp_y[i]*disp_z[i]) #Xbase_1 is first part of equation 1
+    Xbase_2[i] = 1/(np.sqrt(2*np.pi)*disp_y[i]*h_lid) #Xbase_2 is equation 5
+    
+    # next if\else statement determines which base equation we will use
+    if Xbase_2[i] <= Xbase_1[i]:
+        Xbase[i] = Xbase_1[i]*np.exp(-.5*(h_release/disp_z[i])**2)
+    else:
+        Xbase[i] = Xbase_2[i]
+    
+    for j in range(len(y)):
+        Y[j, i] = (y[j]/disp_y[i])**2   #calculates y portion of exponential function for concentration
+        X[j, i] = Xbase[i]*np.exp(-.5*Y[j, i]) #Final concentration value
+
+# Get Iodines doses #
+tedi, adult_dose, child_dose = iodines_func(holdup, exposure, iodine_rate, wind_speed)
+
+# Get Nobles doses #
+tedn = nobles(holdup, exposure, noble_rate, wind_speed)
+
+# Get Cesiums doses #
+tedp= particulates(partic_rate, exposure, wind_speed);
+
+#calculate the puff concentrations
+ted_puff = (tedi+tedn+tedp)*X
+adult_puff = adult_dose*X
+child_puff = child_dose*X
+
+# Plots
+
+fig = plt.figure()
+plt.contourf(Xval,Yval/1000,ted_puff*100, levels = [1, 10, 100, 500], colors = ['#00CD00', 'yellow', 'orange', 'red'], extend='max')
+plt.ylim(-3, 3)
+plt.title('TED Dose')
+plt.xlabel('Downwind Distance (kilometers)')
+plt.ylabel('Off-center distance (kilomethers)')
+plt.show()
+
+fig = plt.figure()
+plt.contourf(Xval,Yval/1000,adult_puff, levels = [1, 5, 10, 500], colors = ['#00CD00', 'yellow', 'orange', 'red'], extend='max')
+plt.ylim(-3, 3)
+plt.xlim(0, 50)
+plt.title('Adult Dose')
+plt.xlabel('Downwind Distance (kilometers)')
+plt.ylabel('Off-center distance (kilomethers)')
+plt.show()
+
+fig = plt.figure()
+plt.contourf(Xval,Yval/1000,child_puff, levels = [1, 5, 10, 500], colors = ['#00CD00', 'yellow', 'orange', 'red'], extend='max')
+plt.ylim(-3, 3)
+plt.xlim(0, 50)
+plt.title('Child Dose')
+plt.xlabel('Downwind Distance (kilometers)')
+plt.ylabel('Off-center distance (kilomethers)')
+plt.show()
+
+##for future use
+##########################################################################################
+# after creation of the puff, we switch the movement of the puff using the TADPUFF Model #
+# below is the equations for this model.  There are 2 equations. IF sigma_z>1.05*h_lid   #
+# then equation TADPUFF_2 is used.  Otherwise, TADPUFF_1 is used                         #
+# Please note that neither of the below equations have been tested                       #
+##########################################################################################
+
+########################################################
+# TADPUFF_1 is broken down into 3 manageable equations##
+########################################################
+
+#tadpuff_part_1=1/((2*np.pi)**(3/2)*disp_y**2*disp_z)
+#tadpuff_part_2=np.exp(-.5*((x-x0)/disp_y)**2)*p.exp(-.5*((y-y0)/disp_y)**2)
+#for i in np.arange(-2,3,1):
+#   tadpuff_part_3=tadpuff_part_3+np.exp((-.5*((2*i*h_lid-h_release-z)/disp_z)**2))+np.exp(((2*i*h_lid-h_release-z)/disp_z)**2)
+#
+#tadpuff_1=tadpuff_part1*tadpuff_part2*tadpuff*tadpuff_part3
+
+#############
+# TADPUFF_2 #
+#############
+
+#tadpuff_2=1/(2*np.pi*disp_z**2*h_lid)*np.exp(-.5*(np.sqrt(x**2+y**2)/disp_z)**2)
